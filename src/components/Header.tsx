@@ -11,6 +11,7 @@ import {
   Heart,
   Archive,
   Plus,
+  Link as LinkIcon,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -27,6 +28,7 @@ interface HeaderProps {
   onOpenCreate?: () => void;
   favoritesCount?: number;
   archiveCount?: number;
+  onOpenImport?: () => void;
 }
 
 export default function Header({
@@ -42,6 +44,7 @@ export default function Header({
   onOpenCreate,
   favoritesCount = 0,
   archiveCount = 0,
+  onOpenImport,
 }: HeaderProps) {
   const todayFormatted = new Intl.DateTimeFormat('de-DE', {
     weekday: 'long',
@@ -132,8 +135,19 @@ export default function Header({
             </div>
           )}
 
-          {/* Right side: Desktop Create Button & Mobile Counter */}
+          {/* Right side: Desktop Buttons & Mobile Actions */}
           <div className="flex items-center gap-2">
+            {onOpenImport && (
+              <button
+                onClick={onOpenImport}
+                className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-indigo-300 hover:text-white border border-slate-700 text-xs font-semibold active:scale-95 transition"
+                title="Events von Webseite importieren"
+              >
+                <LinkIcon className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Link importieren</span>
+              </button>
+            )}
+
             {onOpenCreate && (
               <button
                 onClick={onOpenCreate}
@@ -144,7 +158,19 @@ export default function Header({
               </button>
             )}
 
-            <span className="sm:hidden text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-950/70 border border-indigo-500/30 text-indigo-300">
+            {/* Mobile Import button */}
+            {onOpenImport && (
+              <button
+                onClick={onOpenImport}
+                className="md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800/90 text-indigo-300 border border-slate-700 text-xs font-semibold active:scale-95 transition"
+                title="Events von Link importieren"
+              >
+                <LinkIcon className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Import</span>
+              </button>
+            )}
+
+            <span className="sm:hidden text-xs font-medium px-2 py-1 rounded-full bg-indigo-950/70 border border-indigo-500/30 text-indigo-300">
               {totalActiveCount}
             </span>
           </div>

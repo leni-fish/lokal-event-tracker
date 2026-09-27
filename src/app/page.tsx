@@ -7,6 +7,7 @@ import Header from '@/components/Header';
 import BottomNav, { TabType } from '@/components/BottomNav';
 import EventCard from '@/components/EventCard';
 import EventModal from '@/components/EventModal';
+import ImportModal from '@/components/ImportModal';
 import InstallPrompt from '@/components/InstallPrompt';
 import {
   groupEvents,
@@ -91,6 +92,7 @@ export default function HomePage() {
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<EventItem | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Load events from Supabase or localStorage / fallback
   const fetchEvents = useCallback(async (isRefresh = false) => {
@@ -195,6 +197,30 @@ export default function HomePage() {
         } catch (e) {
           console.error('Failed to insert in Supabase:', e);
         }
+      }
+    }
+  };
+
+  // Batch import multiple events from URL
+  const handleBatchImport = async (newEvents: EventItem[]) => {
+    // Optimistic update
+    setEvents((prev) => [...prev, ...newEvents]);
+
+    if (supabaseConnected) {
+      try {
+        const payloads = newEvents.map((e) => {
+          const { id: _, ...rest } = e;
+          return rest;
+        });
+        const { data, error } = await supabase.from('events').insert(payloads).select();
+        if (error) {
+          console.error('Error inserting imported events:', error);
+        } else if (data && data.length > 0) {
+          // Re-fetch to ensure synced IDs
+          await fetchEvents();
+        }
+      } catch (e) {
+        console.error('Failed to batch insert into Supabase:', e);
       }
     }
   };
@@ -338,6 +364,7 @@ export default function HomePage() {
         onOpenCreate={handleOpenCreate}
         favoritesCount={favoriteEvents.length}
         archiveCount={archivedEvents.length}
+        onOpenImport={() => setIsImportModalOpen(true)}
       />
 
       {/* Supabase Notice Banner if not yet configured in DB */}
@@ -613,6 +640,14 @@ export default function HomePage() {
         }}
         onSave={handleSaveEvent}
         editEvent={editingEvent}
+      />
+
+      {/* Modal for Importing Events from Web URLs with duplicate check */}
+      <ImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        existingEvents={events}
+        onImportEvents={handleBatchImport}
       />
 
       {/* Bottom Navigation Bar */}

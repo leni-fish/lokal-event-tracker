@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="50%" stop-color="#4f46e5" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  <!-- Calendar Icon Frame -->
+  <rect x="96" y="128" width="320" height="288" rx="40" fill="#ffffff" fill-opacity="0.15" stroke="#ffffff" stroke-width="24" />
+  <!-- Calendar Top Bar -->
+  <path d="M96 208h320" stroke="#ffffff" stroke-width="24" stroke-linecap="round" />
+  <!-- Calendar Pins -->
+  <line x1="160" y1="96" x2="160" y2="144" stroke="#ffffff" stroke-width="24" stroke-linecap="round" />
+  <line x1="352" y1="96" x2="352" y2="144" stroke="#ffffff" stroke-width="24" stroke-linecap="round" />
+  <!-- Sparkle / Star in Center -->
+  <path d="M256 256 L268 296 L308 308 L268 320 L256 360 L244 320 L204 308 L244 296 Z" fill="#fbbf24" stroke="#f59e0b" stroke-width="6" stroke-linejoin="round" />
+  <circle cx="180" cy="270" r="10" fill="#ffffff" />
+  <circle cx="332" cy="350" r="10" fill="#ffffff" />
+</svg>

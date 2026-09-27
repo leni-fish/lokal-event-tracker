@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EventItem, EVENT_CATEGORIES } from '@/types';
 import {
   X,
@@ -14,6 +14,10 @@ import {
   Loader2,
   Tag,
   ArrowRight,
+  Key,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -96,6 +100,31 @@ export default function ImportModal({
   const [detectedEvents, setDetectedEvents] = useState<DetectedItem[]>([]);
   const [step, setStep] = useState<'input' | 'preview'>('input');
   const [importing, setImporting] = useState(false);
+  const [scanMethod, setScanMethod] = useState<'ai' | 'schema'>('schema');
+
+  // Gemini API Key state
+  const [geminiKey, setGeminiKey] = useState('');
+  const [showKeyConfig, setShowKeyConfig] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedKey = localStorage.getItem('gemini_api_key');
+      if (savedKey) {
+        setGeminiKey(savedKey);
+      }
+    }
+  }, []);
+
+  const handleSaveKey = (val: string) => {
+    setGeminiKey(val);
+    if (typeof window !== 'undefined') {
+      if (val.trim()) {
+        localStorage.setItem('gemini_api_key', val.trim());
+      } else {
+        localStorage.removeItem('gemini_api_key');
+      }
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -118,7 +147,10 @@ export default function ImportModal({
       const res = await fetch('/api/import-events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: validUrl }),
+        body: JSON.stringify({
+          url: validUrl,
+          apiKey: geminiKey.trim() || undefined,
+        }),
       });
 
       const data = await res.json();
@@ -127,10 +159,19 @@ export default function ImportModal({
         throw new Error(data.error || 'Fehler beim Abrufen der Webseite');
       }
 
+      setScanMethod(data.method || 'schema');
+
       if (!data.events || data.events.length === 0) {
-        throw new Error(
-          'Keine strukturierten Events auf dieser Webseite gefunden. Unterstützt werden Seiten mit Schema.org / JSON-LD Event-Daten (z.B. Eventbrite, Kulturportale, WordPress).'
-        );
+        if (!geminiKey) {
+          setShowKeyConfig(true);
+          throw new Error(
+            'Auf dieser Seite wurden keine standardisierten Schema.org-Daten gefunden. Tipp: Aktiviere unten den kostenlosen KI-Modus (Gemini API), um jeden beliebigen Freitext-Kalender auszulesen!'
+          );
+        } else {
+          throw new Error(
+            'Auch die KI konnte auf dieser Seite keine konkreten Termine erkennen. Bitte prüfe die URL oder ob die Events hinter einem Login liegen.'
+          );
+        }
       }
 
       // Check duplicates for each detected event
@@ -234,9 +275,16 @@ export default function ImportModal({
               <Sparkles className="w-4 h-4 text-amber-300" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">
-                {step === 'input' ? 'Events von Webseite importieren' : 'Erkannte Events prüfen'}
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold text-white">
+                  {step === 'input' ? 'Events von Webseite importieren' : 'Erkannte Events prüfen'}
+                </h2>
+                {step === 'preview' && scanMethod === 'ai' && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    ✨ Mit KI extrahiert
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-400">
                 {step === 'input'
                   ? 'Trage einen Kalender- oder Veranstaltungs-Link ein'
@@ -256,7 +304,7 @@ export default function ImportModal({
         {/* Modal Body */}
         <div className="overflow-y-auto p-5 space-y-4 text-sm flex-1">
           {errorMsg && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs leading-relaxed">
               {errorMsg}
             </div>
           )}
@@ -272,7 +320,7 @@ export default function ImportModal({
                   <input
                     type="url"
                     required
-                    placeholder="https://eventseite.de/programm oder eventbrite.de/..."
+                    placeholder="https://eventseite.de/programm oder stadt.de/kalender..."
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     className="w-full px-4 py-3 rounded-xl bg-slate-800/80 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-sm"
@@ -280,28 +328,77 @@ export default function ImportModal({
                 </div>
               </div>
 
-              {/* Supported formats info box */}
-              <div className="p-3.5 rounded-2xl bg-slate-800/40 border border-slate-800 text-xs text-slate-300 space-y-2">
-                <span className="font-semibold text-slate-200 block">
-                  💡 Was wird automatisch ausgelesen?
-                </span>
-                <p className="text-slate-400 leading-relaxed text-[11px]">
-                  Die App scannt die Seite nach strukturierten Termindaten (Schema.org / JSON-LD).
-                  Das funktioniert bei Event-Plattformen (wie Eventbrite, Ticketmaster), WordPress-Eventkalendern, Kultur-Websites und Stadtportalen.
-                </p>
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-700">
-                    Schema.org Event
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-700">
-                    OpenGraph
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 text-[10px] font-mono border border-slate-700">
-                    Duplikat-Schutz aktiv
-                  </span>
+              {/* Gemini AI Key Banner & Configuration */}
+              <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-950/40 to-slate-900 border border-indigo-500/20 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">✨</span>
+                    <div>
+                      <span className="font-semibold text-white block">
+                        KI-Event-Erkennung (Google Gemini Flash)
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {geminiKey
+                          ? 'Aktiviert: Liest jede Website, auch reinen Text'
+                          : 'Liest auch Freitext, Flyer & Webseiten ohne Schema'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowKeyConfig(!showKeyConfig)}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold px-2 py-1 rounded-lg hover:bg-indigo-950/50 transition flex items-center gap-1"
+                  >
+                    <span>{geminiKey ? 'Key ändern' : 'Kostenlos aktivieren'}</span>
+                    {showKeyConfig ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </button>
                 </div>
+
+                {/* Collapsible Key Input & Instructions */}
+                {showKeyConfig && (
+                  <div className="mt-3 pt-3 border-t border-slate-800 space-y-2.5 animate-in fade-in duration-200">
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Google bietet die Gemini API <strong>dauerhaft kostenlos</strong> (1.500 Anfragen pro Tag gratis).
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-300 hover:text-amber-200 underline"
+                      >
+                        <span>1. Hier mit Google einloggen & "Create API Key" klicken</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <div className="relative">
+                      <Key className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+                      <input
+                        type="password"
+                        placeholder="2. Gemini API-Key hier einfügen (AIzaSy...)"
+                        value={geminiKey}
+                        onChange={(e) => handleSaveKey(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+                    {geminiKey && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Key auf diesem Gerät gespeichert! KI-Scanner ist bereit.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
+              {/* Submit button */}
               <button
                 type="submit"
                 disabled={loading}
@@ -310,7 +407,9 @@ export default function ImportModal({
                 {loading ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Scanne Webseite nach Events...</span>
+                    <span>
+                      {geminiKey ? 'KI analysiert Webseite...' : 'Scanne Webseite nach Events...'}
+                    </span>
                   </>
                 ) : (
                   <>
@@ -417,6 +516,13 @@ export default function ImportModal({
                             )}
                           </div>
 
+                          {/* Description if present */}
+                          {item.description && (
+                            <p className="text-[11px] text-slate-400 line-clamp-2">
+                              {item.description}
+                            </p>
+                          )}
+
                           {/* Category pill & Free indicator */}
                           <div className="flex items-center gap-2 pt-1">
                             <select
@@ -431,11 +537,15 @@ export default function ImportModal({
                               ))}
                             </select>
 
-                            {item.is_free && (
+                            {item.is_free ? (
                               <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
                                 Kostenlos
                               </span>
-                            )}
+                            ) : item.price_note ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                {item.price_note}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>

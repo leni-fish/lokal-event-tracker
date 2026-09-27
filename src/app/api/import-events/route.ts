@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { EventItem, RecurrenceType } from '@/types';
+import { EventItem, RecurrenceType, EVENT_CATEGORIES } from '@/types';
 
 export interface ExtractedEvent {
   id: string;
@@ -16,6 +16,168 @@ export interface ExtractedEvent {
   is_favorite: boolean;
   is_archived: boolean;
   created_at: string;
+}
+
+// Convert HTML to clean readable text
+function htmlToCleanText(html: string): string {
+  let text = html;
+
+  // Remove scripts, styles, SVGs, navs, footers, headers
+  text = text.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ');
+  text = text.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ');
+  text = text.replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, ' ');
+  text = text.replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, ' ');
+  text = text.replace(/<nav\b[^>]*>[\s\S]*?<\/nav>/gi, ' ');
+  text = text.replace(/<footer\b[^>]*>[\s\S]*?<\/footer>/gi, ' ');
+
+  // Replace block elements with newlines
+  text = text.replace(/<\/(p|div|h[1-6]|li|tr|article|section)>/gi, '\n');
+  text = text.replace(/<br\s*[\/]?>/gi, '\n');
+
+  // Strip all other HTML tags
+  text = text.replace(/<[^>]+>/g, ' ');
+
+  // Decode common HTML entities
+  text = text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&euro;/gi, '€');
+
+  // Collapse multiple spaces and blank lines
+  text = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+
+  return text.slice(0, 35000); // 35k chars is plenty for Gemini Flash
+}
+
+// Extract using Google Gemini 1.5 Flash
+async function extractWithGemini(
+  text: string,
+  apiKey: string,
+  sourceUrl: string
+): Promise<ExtractedEvent[]> {
+  const now = new Date();
+  const currentDateStr = now.toISOString();
+
+  const prompt = `Du bist ein intelligenter Event- und Kalender-Parser.
+Hier ist der bereinigte Textinhalt einer Webseite mit Veranstaltungen / Kalender:
+==================================================
+${text}
+==================================================
+
+HEUTIGES DATUM ALS REFERENZ: ${currentDateStr} (Mitteleuropäische Zeit).
+
+AUFGABE:
+Extrahiere ALLE anstehenden Events, Konzerte, Partys, Märkte, Workshops, Lesungen, Aufführungen oder Aktivitäten aus dem Text.
+Ignoriere allgemeine Webseiten-Texte wie Impressum, Cookie-Banner, Ticket-Shop-Navigation oder Allgemeine Geschäftsbedingungen.
+
+Gib das Ergebnis STRENG als valides JSON-Array zurück (ohne Markdown, ohne \`\`\`json Backticks, nur das rohe JSON Array):
+[
+  {
+    "title": "Prägnanter Name der Veranstaltung",
+    "description": "Kurze Zusammenfassung (1-2 Sätze) oder null",
+    "start_time": "Gültiger ISO 8601 Datums- & Zeit-String (z.B. 2026-10-04T20:00:00+02:00)",
+    "end_time": "Gültiger ISO 8601 Datums- & Zeit-String oder null falls unbekannt",
+    "location": "Veranstaltungsort (z.B. Clubname, Straße oder Stadt) oder null",
+    "category": "Eines von: Musik & Konzerte, Kultur & Theater, Nightlife & Party, Food & Drinks, Markt & Flohmarkt, Sport & Fitness, Familie & Kinder, Workshop & Bildung, Allgemein",
+    "is_free": true oder false,
+    "price_note": "Preisangabe (z.B. '15 €' oder 'Kostenlos') oder null"
+  }
+]
+
+Falls im Text keine konkreten Events oder Termine gefunden werden, gib ein leeres Array [] zurück.`;
+
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Gemini API Error:', response.status, errorText);
+    throw new Error(
+      `Gemini API Fehler (${response.status}): Bitte prüfe, ob dein Gemini API-Key korrekt ist.`
+    );
+  }
+
+  const result = await response.json();
+  const rawJson = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!rawJson) return [];
+
+  // Parse JSON
+  let parsedArray: any[] = [];
+  try {
+    parsedArray = JSON.parse(rawJson);
+  } catch (err) {
+    // Attempt to extract array from string if wrapped
+    const arrayMatch = rawJson.match(/\[\s*\{[\s\S]*\}\s*\]/);
+    if (arrayMatch) {
+      parsedArray = JSON.parse(arrayMatch[0]);
+    } else {
+      throw new Error('Die KI konnte die Events nicht in gültiges JSON formatieren.');
+    }
+  }
+
+  if (!Array.isArray(parsedArray)) return [];
+
+  return parsedArray
+    .filter((item) => item && item.title && item.start_time)
+    .map((item) => {
+      // Validate start_time
+      let start_time = item.start_time;
+      try {
+        start_time = new Date(item.start_time).toISOString();
+      } catch {
+        start_time = new Date().toISOString();
+      }
+
+      let end_time: string | null = null;
+      if (item.end_time) {
+        try {
+          end_time = new Date(item.end_time).toISOString();
+        } catch {
+          end_time = null;
+        }
+      }
+
+      const validCategory = EVENT_CATEGORIES.includes(item.category)
+        ? item.category
+        : 'Allgemein';
+
+      return {
+        id: crypto.randomUUID(),
+        title: String(item.title).trim(),
+        description: item.description ? String(item.description).trim() : null,
+        start_time,
+        end_time,
+        location: item.location ? String(item.location).trim() : null,
+        category: validCategory,
+        is_free: Boolean(item.is_free),
+        price_note: item.price_note ? String(item.price_note).trim() : null,
+        source_url: sourceUrl,
+        recurrence: 'none',
+        is_favorite: false,
+        is_archived: false,
+        created_at: new Date().toISOString(),
+      };
+    });
 }
 
 // Category matcher helper based on keywords
@@ -72,8 +234,13 @@ function extractFromJsonLd(html: string, fallbackUrl: string): ExtractedEvent[] 
           typeStr === 'Festival' ||
           typeStr === 'ScreeningEvent';
 
-        if (isEvent && (item.name || item.headline) && item.startDate) {
-          const title = String(item.name || item.headline).trim();
+        // Check if it's a real event, avoiding generic items
+        const rawTitle = String(item.name || item.headline || '').trim();
+        const isGenericTitle = /^(home|startseite|ticketshop|tickets|shop|kontakt|events)$/i.test(
+          rawTitle
+        );
+
+        if (isEvent && rawTitle && !isGenericTitle && item.startDate) {
           let startTime = '';
           try {
             startTime = new Date(item.startDate).toISOString();
@@ -86,11 +253,10 @@ function extractFromJsonLd(html: string, fallbackUrl: string): ExtractedEvent[] 
             try {
               endTime = new Date(item.endDate).toISOString();
             } catch {
-              // ignore invalid end date
+              // ignore
             }
           }
 
-          // Location extraction
           let location: string | null = null;
           if (typeof item.location === 'string') {
             location = item.location;
@@ -109,7 +275,6 @@ function extractFromJsonLd(html: string, fallbackUrl: string): ExtractedEvent[] 
             location = [locName, locAddr].filter(Boolean).join(' • ') || null;
           }
 
-          // Price / Offers
           let isFree = false;
           let priceNote: string | null = null;
           if (item.isAccessibleForFree === true || item.isAccessibleForFree === 'true') {
@@ -132,11 +297,11 @@ function extractFromJsonLd(html: string, fallbackUrl: string): ExtractedEvent[] 
               ? item.description.replace(/<[^>]+>/g, '').trim()
               : null;
 
-          const category = guessCategory(title + ' ' + (description || ''));
+          const category = guessCategory(rawTitle + ' ' + (description || ''));
 
           events.push({
             id: crypto.randomUUID(),
-            title,
+            title: rawTitle,
             description: description ? description.slice(0, 500) : null,
             start_time: startTime,
             end_time: endTime,
@@ -153,56 +318,17 @@ function extractFromJsonLd(html: string, fallbackUrl: string): ExtractedEvent[] 
         }
       }
     } catch {
-      // JSON-LD block was invalid JSON, continue looking
+      // ignore JSON parse errors
     }
   }
 
   return events;
 }
 
-// Fallback: OpenGraph and standard Meta Tags
-function extractFromMeta(html: string, fallbackUrl: string): ExtractedEvent | null {
-  const getMeta = (prop: string) => {
-    const match =
-      html.match(new RegExp(`<meta\\s+property=["']${prop}["']\\s+content=["'](.*?)["']`, 'i')) ||
-      html.match(new RegExp(`<meta\\s+content=["'](.*?)["']\\s+property=["']${prop}["']`, 'i')) ||
-      html.match(new RegExp(`<meta\\s+name=["']${prop}["']\\s+content=["'](.*?)["']`, 'i')) ||
-      html.match(new RegExp(`<meta\\s+content=["'](.*?)["']\\s+name=["']${prop}["']`, 'i'));
-    return match ? match[1] : null;
-  };
-
-  const title = getMeta('og:title') || getMeta('twitter:title');
-  const description = getMeta('og:description') || getMeta('description');
-
-  if (!title) return null;
-
-  // Check if title or page contains time/date hints
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(19, 0, 0, 0);
-
-  return {
-    id: crypto.randomUUID(),
-    title: title.trim(),
-    description: description ? description.slice(0, 400) : null,
-    start_time: tomorrow.toISOString(),
-    end_time: null,
-    location: null,
-    category: guessCategory(title + ' ' + (description || '')),
-    is_free: false,
-    price_note: null,
-    source_url: fallbackUrl,
-    recurrence: 'none',
-    is_favorite: false,
-    is_archived: false,
-    created_at: new Date().toISOString(),
-  };
-}
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { url } = body;
+    const { url, apiKey } = body;
 
     if (!url || typeof url !== 'string') {
       return NextResponse.json(
@@ -221,11 +347,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Determine Gemini API Key (either from user request body or environment variable)
+    const geminiKey = apiKey || process.env.GEMINI_API_KEY;
+
     // Fetch the HTML content
     const response = await fetch(parsedUrl.toString(), {
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 (EventTracker Bot)',
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
       },
@@ -243,19 +372,31 @@ export async function POST(req: NextRequest) {
 
     const html = await response.text();
 
-    // 1. Try JSON-LD extraction
-    let events = extractFromJsonLd(html, url);
+    // 1. If Gemini API key is provided, use Gemini AI extraction (highest quality & reads ANY website)
+    if (geminiKey && geminiKey.trim().length > 10) {
+      try {
+        const cleanText = htmlToCleanText(html);
+        const aiEvents = await extractWithGemini(cleanText, geminiKey.trim(), url);
 
-    // 2. If nothing found in JSON-LD, try OpenGraph fallback
-    if (events.length === 0) {
-      const metaEvent = extractFromMeta(html, url);
-      if (metaEvent) {
-        events = [metaEvent];
+        return NextResponse.json({
+          success: true,
+          method: 'ai',
+          count: aiEvents.length,
+          events: aiEvents,
+          sourceUrl: url,
+        });
+      } catch (geminiError: unknown) {
+        console.warn('Gemini extraction failed, falling back to JSON-LD:', geminiError);
+        // Fall back to JSON-LD if Gemini fails
       }
     }
 
+    // 2. Fallback to native Schema.org / JSON-LD extraction
+    const events = extractFromJsonLd(html, url);
+
     return NextResponse.json({
       success: true,
+      method: 'schema',
       count: events.length,
       events,
       sourceUrl: url,

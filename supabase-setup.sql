@@ -25,10 +25,15 @@ CREATE INDEX IF NOT EXISTS idx_events_start_time ON public.events (start_time AS
 CREATE INDEX IF NOT EXISTS idx_events_is_archived ON public.events (is_archived);
 CREATE INDEX IF NOT EXISTS idx_events_is_favorite ON public.events (is_favorite);
 
--- 2. Row Level Security (RLS) aktivieren
+-- 2. Grundberechtigungen für Rollen 'anon' und 'authenticated' erteilen
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON TABLE public.events TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- 3. Row Level Security (RLS) aktivieren
 ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 
--- 3. RLS Policies für anonymen Lese- und Schreibzugriff (V1 ohne Auth)
+-- 4. RLS Policies für anonymen Lese- und Schreibzugriff (V1 ohne Auth)
 -- Lesen
 DROP POLICY IF EXISTS "Allow anon read events" ON public.events;
 CREATE POLICY "Allow anon read events"

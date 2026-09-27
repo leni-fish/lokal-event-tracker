@@ -320,11 +320,11 @@ export default function HomePage() {
   const grouped = useMemo(() => groupEvents(displayedActiveEvents), [displayedActiveEvents]);
 
   return (
-    <div className="flex-1 flex flex-col max-w-lg mx-auto w-full min-h-screen bg-[#090d16] text-slate-100 pb-28">
+    <div className="flex-1 flex flex-col w-full min-h-screen bg-[#090d16] text-slate-100 pb-28 md:pb-12">
       {/* iOS Install Guide Banner */}
       <InstallPrompt />
 
-      {/* Header with Quick Filters */}
+      {/* Header with Quick Filters and Desktop Navigation */}
       <Header
         currentScope={timeScope}
         onScopeChange={setTimeScope}
@@ -333,43 +333,52 @@ export default function HomePage() {
         onlyFree={onlyFree}
         onToggleOnlyFree={() => setOnlyFree((prev) => !prev)}
         totalActiveCount={activeEvents.length}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onOpenCreate={handleOpenCreate}
+        favoritesCount={favoriteEvents.length}
+        archiveCount={archivedEvents.length}
       />
 
       {/* Supabase Notice Banner if not yet configured in DB */}
       {supabaseConnected === false && (
-        <div className="mx-4 mt-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs flex items-start gap-2.5">
-          <Database className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <span className="font-semibold block text-amber-300">
-              Supabase-Tabelle noch nicht initialisiert
-            </span>
-            <span className="text-[11px] text-amber-200/80">
-              Führe das Skript <code className="bg-amber-950/60 px-1 py-0.5 rounded">supabase-setup.sql</code> in deinem Supabase SQL Editor aus. Bis dahin läuft die App lokal mit Speicher.
-            </span>
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 mt-3">
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs flex items-start gap-2.5">
+            <Database className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <span className="font-semibold block text-amber-300">
+                Supabase-Tabelle noch nicht initialisiert
+              </span>
+              <span className="text-[11px] text-amber-200/80">
+                Führe das Skript <code className="bg-amber-950/60 px-1 py-0.5 rounded">supabase-setup.sql</code> in deinem Supabase SQL Editor aus. Bis dahin läuft die App lokal mit Speicher.
+              </span>
+            </div>
           </div>
         </div>
       )}
 
       {/* Past Events Auto-Archive Notice Banner */}
       {pastActiveCount > 0 && activeTab === 'discover' && (
-        <div className="mx-4 mt-3 p-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-xs flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-slate-300">
-            <ArchiveRestore className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span>
-              {pastActiveCount} {pastActiveCount === 1 ? 'vergangenes Event' : 'vergangene Events'} gefunden
-            </span>
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 mt-3">
+          <div className="p-3 rounded-2xl bg-slate-800/80 border border-slate-700/80 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-slate-300">
+              <ArchiveRestore className="w-4 h-4 text-amber-400 flex-shrink-0" />
+              <span>
+                {pastActiveCount} {pastActiveCount === 1 ? 'vergangenes Event' : 'vergangene Events'} gefunden
+              </span>
+            </div>
+            <button
+              onClick={handleArchiveAllPast}
+              className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-amber-300 text-[11px] font-semibold transition active:scale-95 whitespace-nowrap"
+            >
+              Ins Archiv verschieben
+            </button>
           </div>
-          <button
-            onClick={handleArchiveAllPast}
-            className="px-2.5 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-amber-300 text-[11px] font-semibold transition active:scale-95 whitespace-nowrap"
-          >
-            Ins Archiv verschieben
-          </button>
         </div>
       )}
 
       {/* Main Content Area */}
-      <main className="flex-1 px-4 pt-4 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-4 space-y-8">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
             <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
@@ -411,7 +420,7 @@ export default function HomePage() {
                         ({grouped.today.length})
                       </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {grouped.today.map((event) => (
                         <EventCard
                           key={event.id}
@@ -438,7 +447,7 @@ export default function HomePage() {
                         ({grouped.tomorrow.length})
                       </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {grouped.tomorrow.map((event) => (
                         <EventCard
                           key={event.id}
@@ -465,7 +474,7 @@ export default function HomePage() {
                         ({grouped.thisWeekend.length})
                       </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {grouped.thisWeekend.map((event) => (
                         <EventCard
                           key={event.id}
@@ -492,7 +501,7 @@ export default function HomePage() {
                         ({grouped.later.length})
                       </span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {grouped.later.map((event) => (
                         <EventCard
                           key={event.id}
@@ -537,7 +546,7 @@ export default function HomePage() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {favoriteEvents.map((event) => (
                   <EventCard
                     key={event.id}
@@ -578,7 +587,7 @@ export default function HomePage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {archivedEvents.map((event) => (
                   <EventCard
                     key={event.id}

@@ -21,7 +21,7 @@ export default function BottomNav({
   archiveCount,
 }: BottomNavProps) {
   return (
-    <nav className="fixed bottom-0 inset-x-0 z-50 glass-nav pb-[env(safe-area-inset-bottom)] px-3 pt-2">
+    <nav className="fixed bottom-0 inset-x-0 z-50 glass-nav pb-[env(safe-area-inset-bottom)] px-3 pt-2 md:hidden">
       <div className="flex items-center justify-around max-w-lg mx-auto h-16 relative">
         {/* Entdecken */}
         <button
